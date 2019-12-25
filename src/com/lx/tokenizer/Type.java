@@ -1,0 +1,56 @@
+package com.lx.tokenizer;
+
+public enum Type {
+
+    //    <reserved-word> ::=
+//    'const'
+//    |'void'   |'int'    |'char'   |'double'
+//    |'struct'
+//    |'if'     |'else'
+//    |'switch' |'case'   |'default'
+//    |'while'  |'for'    |'do'
+//    |'return' |'break'  |'continue'
+//    |'print'  |'scan'
+    NULL_TOKEN,
+    NONDIGIT,
+    DIGIT,
+    RESERVEDWORD_CONST,
+    RESERVEDWORD_VOID,
+    RESERVEDWORD_INT,
+    RESERVEDWORD_CHAR,
+    RESERVEDWORD_DOUBLE,
+    RESERVEDWORD_STRUCT,
+    RESERVEDWORD_IF,
+    RESERVEDWORD_ELSE,
+    RESERVEDWORD_SWITCH,
+    RESERVEDWORD_CASE,
+    RESERVEDWORD_DEFAULT,
+    RESERVEDWORD_WHILE,
+    RESERVEDWORD_FOR,
+    RESERVEDWORD_DO,
+    RESERVEDWORD_RETURN,
+    RESERVEDWORD_BREAK,
+    RESERVEDWORD_CONTINUE,
+    RESERVEDWORD_PRINT,
+    RESERVEDWORD_SCAN,
+    SIMPLE_TYPE_SPECIFIER,
+    CONST_QUALIFIER,
+    NONZERO_DIGIT,
+    HEXADECIMAL_DIGIT,
+    INTEGER_LITERAL,
+    DECIMAL_LITERAL,
+    HEXADECIMAL_LITERAL,
+    IDENTIFIER,
+    UNARY_OPERATOR,
+    ADDITIVE_OPERATOR,
+    MULTIPLICATIVE_OPERATOR,
+    RELATIONAL_OPERATOR,
+    ASSIGNMENT_OPERATOR,
+    LEFT_PARENTHESES,
+    RIGHT_PARENTHESES,
+    LEFT_BRACKET,
+    RIGHT_BRACKET,
+    COMMA,
+    SEMICOLON,
+    TYPE_SPECIFIER
+}

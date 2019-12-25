@@ -1,0 +1,11 @@
+a = 4;
+  int a0 = 42;
+  double g1 = 1;
+  int a = 3;
+   int fun(int num) {
+       return -num;
+   }
+
+   int main() {
+       return fun(-123456);
+   }
