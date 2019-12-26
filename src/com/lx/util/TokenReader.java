@@ -24,7 +24,7 @@ public class TokenReader {
     public void unreadToken(Token token){
         tokens.add(0,token);
     }
-    public void pushBackTokens(){
+    public void pushBackTokens(){  //只允许在不调用别的方法的方法上使用。慎用。
         int len = pushBack.size();
         for(int i = len-1;i>=0;i--){
             tokens.add(0,pushBack.get(i));

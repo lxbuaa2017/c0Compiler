@@ -124,7 +124,7 @@ public class Tokenizer {
                         if(!(Character.isDigit(currentChar)||(currentChar>='a'&&currentChar<='f')||(currentChar>='A'&&currentChar<='F'))){//如0x+，则把x+塞回去返回0
                             reader.unReadChar(currentChar);
                             reader.unReadChar(x);
-                            tokens.add(new Token(Type.DIGIT,0));
+                            tokens.add(new Token(Type.DECIMAL_LITERAL,0));
                             continue;
                         }
                         while (Character.isDigit(currentChar)||(currentChar>='a'&&currentChar<='f')||(currentChar>='A'&&currentChar<='F')){
