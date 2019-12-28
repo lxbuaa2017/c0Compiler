@@ -1,4 +1,4 @@
-package com.lx.analyser;
+package com.lx.analyser.instruction;
 
 public enum OpCode {
     NOP("nop"),

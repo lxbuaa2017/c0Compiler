@@ -1,16 +1,46 @@
 package com.lx.analyser;
 
+import com.lx.analyser.instruction.Constant;
+import com.lx.analyser.instruction.Function;
+import com.lx.analyser.instruction.Operation;
 import com.lx.error.AnalyserException;
 import com.lx.error.NotFitException;
 import com.lx.tokenizer.Token;
+import com.lx.util.Expression;
 import com.lx.util.TokenReader;
+
+import java.util.ArrayList;
+import java.util.HashMap;
 
 import static com.lx.tokenizer.Type.*;
 
 public class Analyser {
     private TokenReader reader;
-//    private Token currentToken;
-//    currentToken不要用全局变量
+
+    private int currentParamNum;
+
+    private HashMap<String,Integer> currentFuncVarIndexs;
+    private int currentFuncStackIndex;
+    private ArrayList<Operation> currentOperations;//记得重新new
+
+    private static HashMap<String,Object> globalVarIndex = new HashMap<>();
+    private HashMap<String,Object> currentFuncConstantsIndex;//指函数栈的下标
+
+    private static ArrayList<Operation> starts = new ArrayList<>();
+
+    private static ArrayList<Function> functions = new ArrayList<>();
+
+
+    private static HashMap<String,Object> globalConstantsIndex = new HashMap<>();//指.constant里的下标
+    private static ArrayList<Constant> constants = new ArrayList<>();
+    private boolean currentConstFlag = false;
+//    private static int constantsIndex = 0;
+    private static int startIndex = 0;
+    private static int functionsIndex = 0;
+    private Expression expr = Expression.getExpresser();
+    //每个函数的局部变量用局部的hashmap存，指令的index也是
+    private static int stackIndex = 0;//全局栈位置
+    private static boolean isStart = true;
     public Analyser(TokenReader reader) {
         this.reader = reader;
     }
@@ -70,34 +100,111 @@ public class Analyser {
                 break;
             }
         }
+        currentToken = reader.readToken();
+        if(currentToken!=null)
+            throw new RuntimeException();
     }
 //<variable-declaration> ::=
 //    [<const-qualifier>]<type-specifier><init-declarator-list>';'
-    public void variable_declaration() throws NotFitException{
+//    <init-declarator-list> ::=
+//    <init-declarator>{','<init-declarator>}
+//<init-declarator> ::=
+//    <identifier>[<initializer>]
+//<initializer> ::=
+//    '='<expression>
+    public void variable_declaration() throws NotFitException {
+        currentConstFlag = false;
         reader.clearPushBack();
         Token currentToken = reader.readToken();
         if(currentToken.getType()==CONST_QUALIFIER) {
+            currentConstFlag = true;
             currentToken = reader.readToken();
         }
         if(currentToken.getType()!=SIMPLE_TYPE_SPECIFIER){
             reader.pushBackTokens();
             throw new NotFitException("<variable-declaration>中识别不到合法的<type-specifier>");
         }
+        if(!currentToken.getValue().equals("int")){
+            throw new RuntimeException("void不能声明变量");
+        }
         currentToken=reader.readToken();
         if(currentToken.getType()!=IDENTIFIER){
             reader.pushBackTokens();
             throw new NotFitException("<variable-declaration>中识别不到合法的<init-declarator>");
         }
+        String idenName = (String) currentToken.getValue();//变量名
         currentToken=reader.readToken();
         if(currentToken.getType()!=ASSIGNMENT_OPERATOR){
             reader.unreadToken(currentToken);
+            //此时比如定义了个int a, 是start的话，如果是const，就存.constants，start里用loadc,不是const就bipush
+            if(isStart){
+                if(currentConstFlag){
+                    throw new RuntimeException("const变量必须显式初始化");
+                }
+                else {
+                    //直接存到.start
+                    int index = starts.size();
+                    starts.add(new Operation(index,"ipush","0",null));
+                    globalVarIndex.put(idenName,stackIndex);
+                    stackIndex++;
+                }
+            }
+            else {
+                //在函数里
+                if(currentConstFlag){
+                    throw new RuntimeException("const变量必须显式初始化");
+                }
+                else {
+                    int index = currentOperations.size();
+                    currentOperations.add(new Operation(index,"ipush",0,null));
+                    currentFuncVarIndexs.put(idenName,currentFuncStackIndex);
+                    currentFuncStackIndex++;
+                    //默认为0
+                }
+            }
         }
-        else {
+        else {//有赋值语句
             try{
-                expression();
+                if(!(currentConstFlag&&isStart))
+                    expression();//计算完后index-1处存结果
             }
             catch (NotFitException e){
                 throw new NotFitException("<variable-declaration>中识别不到合法的<expression>");
+            }
+            if(currentConstFlag){
+                if(isStart){
+                    //这里的constant计算由编译器完成
+                    String exprStr = "";
+                    while (currentToken.getType()!=SEMICOLON&&currentToken.getType()!=COMMA){
+                        exprStr+=currentToken.getValue();
+                        currentToken = reader.readToken();
+                    }
+                    reader.unreadToken(currentToken);
+                    String result;
+                    try {
+                        result = expr.calculate(exprStr).toString();
+                    }
+                    catch (Exception e){
+                        e.printStackTrace();
+                        throw new NotFitException("表达式不正确");
+                    }
+                    int index = constants.size();
+                    constants.add(new Constant(index,'I',result));
+                    globalConstantsIndex.put(idenName,index);
+                }
+                else {
+                    //函数里的const，已经由expression计算完成放到栈顶
+                    currentFuncConstantsIndex.put(idenName,currentFuncStackIndex-1);
+                }
+            }
+            else {//已经赋值的，不是constantd的
+                if(isStart){
+                    //int a = 3+3;
+                    globalVarIndex.put(idenName,stackIndex-1);
+                }
+                else {
+                    currentFuncVarIndexs.put(idenName,currentFuncStackIndex-1);
+                }
             }
         }
         currentToken = reader.readToken();
@@ -123,9 +230,90 @@ public class Analyser {
 //        <identifier>[<initializer>]
 //        <initializer> ::=
 //        '='<expression>
+        //a=3,b=4,c=a+b
     }
     public void init_declarator() throws NotFitException{
         Token currentToken=reader.readToken();
+        if(currentToken.getType()!=IDENTIFIER){
+            reader.unreadToken(currentToken);
+            throw new NotFitException("<variable-declaration>中识别不到合法的<init-declarator>");
+        }
+        String idenName = (String) currentToken.getValue();//变量名
+        currentToken=reader.readToken();
+        if(currentToken.getType()!=ASSIGNMENT_OPERATOR){
+            reader.unreadToken(currentToken);
+//此时比如定义了个int a, 是start的话，如果是const，就存.constants，start里用loadc,不是const就bipush
+            if(isStart){
+                if(currentConstFlag){
+                    throw new RuntimeException("const变量必须显式初始化");
+                }
+                else {
+                    //直接存到.start
+                    int index = starts.size();
+                    starts.add(new Operation(index,"ipush","0",null));
+                    globalVarIndex.put(idenName,stackIndex);
+                    stackIndex++;
+                }
+            }
+            else {
+                //在函数里
+                if(currentConstFlag){
+                    throw new RuntimeException("const变量必须显式初始化");
+                }
+                else {
+                    int index = currentOperations.size();
+                    currentOperations.add(new Operation(index,"ipush",0,null));
+                    currentFuncVarIndexs.put(idenName,currentFuncStackIndex);
+                    currentFuncStackIndex++;
+                    //默认为0
+                }
+            }
+        }
+        else {//有赋值语句
+            try{
+                if(!(currentConstFlag&&isStart))
+                    expression();//计算完后index-1处存结果
+            }
+            catch (NotFitException e){
+                throw new NotFitException("<variable-declaration>中识别不到合法的<expression>");
+            }
+            if(currentConstFlag){
+                if(isStart){
+                    //这里的constant计算由编译器完成
+                    String exprStr = "";
+                    while (currentToken.getType()!=SEMICOLON&&currentToken.getType()!=COMMA){
+                        exprStr+=currentToken.getValue();
+                        currentToken = reader.readToken();
+                    }
+                    reader.unreadToken(currentToken);
+                    String result;
+                    try {
+                        result = expr.calculate(exprStr).toString();
+                    }
+                    catch (Exception e){
+                        e.printStackTrace();
+                        throw new NotFitException("表达式不正确");
+                    }
+                    int index = constants.size();
+                    constants.add(new Constant(index,'I',result));
+                    globalConstantsIndex.put(idenName,index);
+                }
+                else {
+                    //函数里的const，已经由expression计算完成放到栈顶
+                    currentFuncConstantsIndex.put(idenName,currentFuncStackIndex-1);
+                }
+            }
+            else {//已经赋值的，不是constantd的
+                if(isStart){
+                    //int a = 3+3;
+                    globalVarIndex.put(idenName,stackIndex-1);
+                }
+                else {
+                    currentFuncVarIndexs.put(idenName,currentFuncStackIndex-1);
+                }
+            }
+        }
+        /*Token currentToken=reader.readToken();
         Token temp1 = currentToken;
         if(currentToken.getType()!=IDENTIFIER){
             reader.unreadToken(currentToken);
@@ -145,24 +333,41 @@ public class Analyser {
                 reader.unreadToken(temp1);
                 throw new NotFitException("<initializer>中识别不到合法的<expression>");
             }
-        }
+        }*/
     }
 //    <function-definition> ::= <type-specifier><identifier><parameter-clause><compound-statement>
-//    int func(){}
+//    int func(int a){}
+//0 0（函数名的位置） 4（参数个数） 1（作用域，基础只为0或者1）
+//    functions
     public void function_definition() throws NotFitException{
+        currentFuncVarIndexs = new HashMap<>();
+        currentOperations = new ArrayList<>();
+        currentParamNum = 0;
+        currentFuncStackIndex = 0;
+        currentConstFlag = false;
+        currentFuncConstantsIndex = new HashMap<>();
+        isStart = false;
         reader.clearPushBack();
         Token currentToken = reader.readToken();
         if(currentToken.getType()!=SIMPLE_TYPE_SPECIFIER) {
             reader.unreadToken(currentToken);
             throw new NotFitException("functionDefinition中没有type-specifier");
         }
+
+
         Token temp = currentToken;
         currentToken=reader.readToken();
         if(currentToken.getType()!=IDENTIFIER) {
             reader.unreadToken(currentToken);
             reader.unreadToken(temp);
-            throw new NotFitException("functionDefinition中没有type-specifier");
+            throw new NotFitException("functionDefinition中没有identifier");
         }
+        String funcName = new String(currentToken.getValue().toString());//防止浅拷贝
+        //把函数名存到constants里
+        int nameIndex = constants.size();
+        constants.add(new Constant(nameIndex,'S',"\""+funcName+"\""));
+        globalConstantsIndex.put("\""+funcName+"\"",nameIndex);
+        currentParamNum = 0;
         try{
             parameter_clause();
             compound_statement();
@@ -171,6 +376,11 @@ public class Analyser {
             reader.pushBackTokens();//恢复现场，谨慎考虑其与其他函数关系，因为pushback数组是全局的
             throw new NotFitException("functionDefinition构建失败");
         }
+        //funcName currentParamNum已知 作用域都为1；接下来考虑operation
+        int fIndex = functions.size();
+        Function currentFunction = new Function(fIndex,nameIndex,currentParamNum,1);
+        currentFunction.operations=currentOperations;//每次重新调用函数定义时候都会new一个，因此这里是硬拷贝
+        functions.add(currentFunction);
     }
 //<parameter-clause> ::=
 //    '(' [<parameter-declaration-list>] ')'
@@ -199,7 +409,8 @@ public class Analyser {
 
     public void parameter_declaration_list() throws NotFitException{
         try{
-            parameter_declaration();
+            parameter_declaration();//加载参数
+            currentParamNum++;
         }
         catch (NotFitException e) {
             throw new NotFitException("parameter_declaration_list不合法");
@@ -224,14 +435,17 @@ public class Analyser {
     }
 //<parameter-declaration> ::=
 //    [<const-qualifier>]<type-specifier><identifier>
-    public void parameter_declaration() throws NotFitException{
+    public void parameter_declaration() throws NotFitException{ //这里需要把当前函数的参数入栈，loada 0,0(1,2,3) 然后iload
+//        currentFuncIndex里存当前参数位置
+        boolean constParam = false;
         Token currentToken = reader.readToken();
-        if(currentToken.getType()!=CONST_QUALIFIER){
-            if(currentToken.getType()!=SIMPLE_TYPE_SPECIFIER){
+        if(currentToken.getType()!=CONST_QUALIFIER){  //是普通的int a，存到currentVar
+            if(!currentToken.getValue().equals("int")){
                 reader.unreadToken(currentToken);
                 throw new NotFitException("parameter-declaration不合法");
             }
             //<type-specifier><identifier>的情况
+
             Token temp = currentToken;
             currentToken = reader.readToken();
             if(currentToken.getType()!=IDENTIFIER){
@@ -239,8 +453,11 @@ public class Analyser {
                 reader.unreadToken(temp);
                 throw new NotFitException("parameter-declaration不合法");
             }
+            currentFuncVarIndexs.put(currentToken.getValue().toString(),currentFuncStackIndex);
+            currentFuncStackIndex++;
         }
         else {
+            constParam = true;//需要把参数存到currentConstants里
             Token temp = currentToken;
             currentToken = reader.readToken();
             if(currentToken.getType()!=SIMPLE_TYPE_SPECIFIER){
@@ -256,6 +473,8 @@ public class Analyser {
                 reader.unreadToken(temp);
                 throw new NotFitException("parameter-declaration不合法");
             }
+            currentFuncConstantsIndex.put(currentToken.getValue().toString(),currentFuncStackIndex);
+            currentFuncStackIndex++;
         }
     }
 //<compound-statement> ::=
@@ -412,7 +631,8 @@ public class Analyser {
         }
     }
 //    <condition> ::= <expression>[<relational-operator><expression>]
-    public void condition() throws NotFitException{
+    //expression把结果放在栈顶
+    public String condition() throws NotFitException{
         try{
             expression();
         }
@@ -422,7 +642,12 @@ public class Analyser {
         Token currentToken = reader.readToken();
         if(currentToken.getType()!=RELATIONAL_OPERATOR){
             reader.unreadToken(currentToken);
+            return null;
+            //只有一个表达式
+            //将表达式结果取出来判断。
         }
+        //两个表达式，icmp
+//      <relational-operator>     ::= '<' | '<=' | '>' | '>=' | '!=' | '=='
         else {
             try{
                 expression();
@@ -430,6 +655,9 @@ public class Analyser {
             catch (NotFitException e){
                 throw new NotFitException("condition的relational-operator后面没有expression");
             }
+            int index = currentOperations.size();
+            currentOperations.add(new Operation(index,"icmp",null,null));
+            return currentToken.getValue().toString();
         }
     }
 
@@ -448,12 +676,53 @@ public class Analyser {
             reader.unreadToken(ifToken);
             throw new NotFitException("condition-statement中没有(");
         }
-        condition();//有异常就让它自动往上层抛就行
+        //      <relational-operator>     ::= '<' | '<=' | '>' | '>=' | '!=' | '=='
+
+        String relational_operator = condition();//有异常就让它自动往上层抛就行
         //后面出错了就该停止运行，不会再考虑回退
         currentToken=reader.readToken();
         if(currentToken.getType()!=RIGHT_PARENTHESES)
             throw new NotFitException("condition-statement中没有)");
+        //预留判断语句的位置
+        int index = currentOperations.size();
+        Operation judgeCondition = new Operation(index,null,null,null);
+        currentOperations.add(judgeCondition);//利用浅拷贝的特性之后将其更新
+        //执行if(){}大括号里的内容
         statement();
+        //只有一个表达式的情况
+        if(relational_operator == null){
+            //je,if(0)就跳到if语句段后面去
+            int jmpIndex = currentOperations.size();
+            judgeCondition.setOperation(index,"je",jmpIndex,null);
+        }
+        else {
+            int jmpIndex = currentOperations.size();
+            switch (relational_operator){
+                case "<":
+                    //左边大于等于的情况下跳，即result=1,jg
+                    judgeCondition.setOperation(index,"jg",jmpIndex,null);
+                    break;
+                case "<=":
+                    //result 0或1，不是负数,jge
+                    judgeCondition.setOperation(index,"jge",jmpIndex,null);
+                    break;
+                case ">":
+                    judgeCondition.setOperation(index,"jl",jmpIndex,null);
+                    break;
+                case ">=":
+                    judgeCondition.setOperation(index,"jle",jmpIndex,null);
+                    break;
+                case "!=":
+                    //result非0,jne
+                    judgeCondition.setOperation(index,"jne",jmpIndex,null);
+                    break;
+                case "==":
+                    judgeCondition.setOperation(index,"je",jmpIndex,null);
+                    break;
+                default:
+                    throw new RuntimeException();
+            }
+        }
         currentToken = reader.readToken();
         if(currentToken!=null){
             if(currentToken.getType()!=RESERVEDWORD_ELSE){
@@ -591,7 +860,7 @@ public class Analyser {
 
     }
 //<expression> ::= <additive-expression>
-    public void expression() throws NotFitException{  //需要复原
+    public void expression() throws NotFitException{  //需要复原。需要把结果放到栈顶
         additive_expression();
     }
 //<additive-expression> ::=   <multiplicative-expression>{<additive-operator><multiplicative-expression>}
