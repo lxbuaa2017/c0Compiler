@@ -692,32 +692,32 @@ public class Analyser {
         //只有一个表达式的情况
         if(relational_operator == null){
             //je,if(0)就跳到if语句段后面去
-            int jmpIndex = currentOperations.size();
+            int jmpIndex = currentOperations.size()+1;
             judgeCondition.setOperation(index,"je",jmpIndex,null);
         }
         else {
-            int jmpIndex = currentOperations.size();
+            int jmpIndex = currentOperations.size()+1;
             switch (relational_operator){
                 case "<":
-                    //左边大于等于的情况下跳，即result=1,jg
-                    judgeCondition.setOperation(index,"jg",jmpIndex,null);
+                    //左边大于等于的情况下跳，即result=1或0,jge
+                    judgeCondition.setOperation(index,"jge",jmpIndex,null);
                     break;
                 case "<=":
                     //result 0或1，不是负数,jge
-                    judgeCondition.setOperation(index,"jge",jmpIndex,null);
+                    judgeCondition.setOperation(index,"jg",jmpIndex,null);
                     break;
                 case ">":
-                    judgeCondition.setOperation(index,"jl",jmpIndex,null);
-                    break;
-                case ">=":
                     judgeCondition.setOperation(index,"jle",jmpIndex,null);
                     break;
+                case ">=":
+                    judgeCondition.setOperation(index,"jl",jmpIndex,null);
+                    break;
                 case "!=":
-                    //result非0,jne
-                    judgeCondition.setOperation(index,"jne",jmpIndex,null);
+                    //result 0,je
+                    judgeCondition.setOperation(index,"je",jmpIndex,null);
                     break;
                 case "==":
-                    judgeCondition.setOperation(index,"je",jmpIndex,null);
+                    judgeCondition.setOperation(index,"jne",jmpIndex,null);
                     break;
                 default:
                     throw new RuntimeException();
@@ -735,6 +735,7 @@ public class Analyser {
     }
 //<loop-statement> ::=
 //    'while' '(' <condition> ')' <statement>
+//如果条件不满足，就jump到后面去
     public void loop_statement() throws NotFitException{
         Token currentToken = reader.readToken();
         if(currentToken.getType()!=RESERVEDWORD_WHILE){
@@ -748,12 +749,53 @@ public class Analyser {
             reader.unreadToken(temp);
             throw new NotFitException("(");
         }
-        condition();
+        String relational_operator = condition();
         currentToken = reader.readToken();
         if(currentToken.getType()!=RIGHT_PARENTHESES){
             throw new NotFitException(")");
         }
+        //先插入空指令占位置
+        //预留判断语句的位置
+        int index = currentOperations.size();
+        Operation judgeCondition = new Operation(index,null,null,null);
+        currentOperations.add(judgeCondition);//利用浅拷贝的特性之后将其更新
         statement();
+        //在最后加一条跳回jump语句的语句
+        int jumpBackIndex = currentOperations.size();
+        currentOperations.add(new Operation(jumpBackIndex,"jmp",index,null));
+        if(relational_operator == null){
+            //je,if(0)就跳到if语句段后面去
+            int jmpIndex = currentOperations.size()+1;
+            judgeCondition.setOperation(index,"je",jmpIndex,null);
+        }
+        else {
+            int jmpIndex = currentOperations.size()+1;
+            switch (relational_operator){
+                case "<":
+                    //左边大于等于的情况下跳，即result=1或0,jge
+                    judgeCondition.setOperation(index,"jge",jmpIndex,null);
+                    break;
+                case "<=":
+                    //result 0或1，不是负数,jge
+                    judgeCondition.setOperation(index,"jg",jmpIndex,null);
+                    break;
+                case ">":
+                    judgeCondition.setOperation(index,"jle",jmpIndex,null);
+                    break;
+                case ">=":
+                    judgeCondition.setOperation(index,"jl",jmpIndex,null);
+                    break;
+                case "!=":
+                    //result 0,je
+                    judgeCondition.setOperation(index,"je",jmpIndex,null);
+                    break;
+                case "==":
+                    judgeCondition.setOperation(index,"jne",jmpIndex,null);
+                    break;
+                default:
+                    throw new RuntimeException();
+            }
+        }
     }
 
 //    <jump-statement> ::= <return-statement>
@@ -778,6 +820,8 @@ public class Analyser {
         if (currentToken.getType()!=SEMICOLON){
             throw new NotFitException(";");
         }
+        int index = currentOperations.size();
+        currentOperations.add(new Operation(index,"iret",null,null));
     }
 //<scan-statement> ::= 'scan' '(' <identifier> ')' ';'
     public void scan_statement() throws NotFitException{
