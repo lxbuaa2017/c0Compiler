@@ -952,10 +952,13 @@ public class Analyser {
 //     '('<expression>')'
 //    |<identifier>
 //    |<integer-literal>
-//    |<function-call>  <identifier> '(' [<expression-list>] ')'
+//    |<function-call>                               <identifier> '(' [<expression-list>] ')'
 
-//    <integer-literal> ::= <decimal-literal>|<hexadecimal-literal>
+//    <integer-literal>                              ::= <decimal-literal>|<hexadecimal-literal>
+
+    //需要把对应的结果取出来放到栈顶
     public void primary_expression() throws NotFitException{
+        //这里必须考虑isstart
         Token currentToken =reader.readToken();
         reader.unreadToken(currentToken);
         switch (currentToken.getType()){
@@ -969,6 +972,52 @@ public class Analyser {
                 currentToken = reader.readToken();
                 if(currentToken.getType()!=LEFT_PARENTHESES){
                     reader.unreadToken(currentToken);
+                    //把iden的值取出来，（constant和global）先找全局变量，再找局部变量
+                    String idenName = iden.getValue().toString();
+                    //顺序：先找局部
+                    int idenIndex;
+                    if(currentFuncConstantsIndex.containsKey(idenName)){
+                        idenIndex = (int)currentFuncConstantsIndex.get(idenName);
+                        int index = currentOperations.size();
+                        currentOperations.add(new Operation(index,"loada",0,idenIndex));
+                        currentFuncStackIndex++;
+                        currentOperations.add(new Operation(index+1,"iload",null,null));
+                    }
+                    else if(currentFuncVarIndexs.containsKey(idenName)) {
+                        idenIndex = (int) currentFuncVarIndexs.get(idenName);
+                        int index = currentOperations.size();
+                        currentOperations.add(new Operation(index,"loada",0,idenIndex));
+                        currentFuncStackIndex++;
+                        currentOperations.add(new Operation(index+1,"iload",null,null));
+                    }
+                    else if(globalConstantsIndex.containsKey(idenName)){ //考虑isstart
+                        idenIndex = (int) globalConstantsIndex.get(idenName);//注意这个在.constants里
+                        if(isStart){
+                            int startIndex = starts.size();
+                            starts.add(new Operation(startIndex,"loadc",idenIndex,null));
+                            stackIndex++;
+                        }
+                        else {
+                            int index = currentOperations.size();
+                            currentOperations.add(new Operation(index,"loadc",idenIndex,null));
+                            currentFuncStackIndex++;
+                        }
+                    }
+                    else if(globalVarIndex.containsKey(idenName)){//注意这个要loada 1,index 考虑isstart
+                        idenIndex = (int)globalVarIndex.get(idenName);
+                        if(isStart){
+                            int startIndex = starts.size();
+                            starts.add(new Operation(startIndex,"loada",0,idenIndex));
+                            stackIndex++;
+                            starts.add(new Operation(startIndex+1,"iload",null,null));
+                        }
+                        else {
+                            int index = currentOperations.size();
+                            currentOperations.add(new Operation(index,"loada",1,idenIndex));
+                            currentFuncStackIndex++;
+                            currentOperations.add(new Operation(index+1,"iload",null,null));
+                        }
+                    }
                     return;
                 }
                 reader.unreadToken(currentToken);
@@ -1038,5 +1087,13 @@ public class Analyser {
         if(currentToken.getType()!=DECIMAL_LITERAL&&currentToken.getType()!=HEXADECIMAL_LITERAL){
             reader.unreadToken(currentToken);
         }
+        String num = currentToken.getValue().toString();
+        if(currentToken.getType()==HEXADECIMAL_LITERAL){
+            Integer decimal = Integer.valueOf(num,16);//十六进制转十进制
+            num = decimal.toString();
+        }
+        int index = currentOperations.size();
+        currentOperations.add(new Operation(index,"ipush",num,null));
+        currentFuncStackIndex++;
     }
 }
