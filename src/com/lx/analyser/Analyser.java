@@ -23,6 +23,8 @@ public class Analyser {
     private int currentFuncStackIndex;
     private ArrayList<Operation> currentOperations;//记得重新new
 
+    private static HashMap<String,Object> functionIndex = new HashMap<>();
+
     private static HashMap<String,Object> globalVarIndex = new HashMap<>();
     private HashMap<String,Object> currentFuncConstantsIndex;//指函数栈的下标
 
@@ -44,6 +46,21 @@ public class Analyser {
     public Analyser(TokenReader reader) {
         this.reader = reader;
     }
+
+//.constants:
+//0 S "fun"
+//.start:
+//0    bipush 42
+//.functions:
+//0 0 1 1                   # .F0 fun
+//.F0: #fun
+//0    loada 0, 0
+//.F1: #main
+//0    loadc 4
+    public void writeOut(){
+
+    }
+
 
 //<C0-program> ::= {<variable-declaration>}{<function-definition>}
 //    <variable-declaration> ::=  [<const-qualifier>]<type-specifier><init-declarator-list>';'
@@ -303,7 +320,7 @@ public class Analyser {
                     currentFuncConstantsIndex.put(idenName,currentFuncStackIndex-1);
                 }
             }
-            else {//已经赋值的，不是constantd的
+            else {//已经赋值的，不是constant的
                 if(isStart){
                     //int a = 3+3;
                     globalVarIndex.put(idenName,stackIndex-1);
@@ -353,9 +370,7 @@ public class Analyser {
             reader.unreadToken(currentToken);
             throw new NotFitException("functionDefinition中没有type-specifier");
         }
-
-
-        Token temp = currentToken;
+        Token temp = currentToken;//void int
         currentToken=reader.readToken();
         if(currentToken.getType()!=IDENTIFIER) {
             reader.unreadToken(currentToken);
@@ -366,6 +381,9 @@ public class Analyser {
         //把函数名存到constants里
         int nameIndex = constants.size();
         constants.add(new Constant(nameIndex,'S',"\""+funcName+"\""));
+        if(globalConstantsIndex.containsKey("\""+funcName+"\"")){
+            throw new RuntimeException("函数重定义！");
+        }
         globalConstantsIndex.put("\""+funcName+"\"",nameIndex);
         currentParamNum = 0;
         try{
@@ -378,8 +396,10 @@ public class Analyser {
         }
         //funcName currentParamNum已知 作用域都为1；接下来考虑operation
         int fIndex = functions.size();
+        functionIndex.put(funcName,fIndex);
         Function currentFunction = new Function(fIndex,nameIndex,currentParamNum,1);
         currentFunction.operations=currentOperations;//每次重新调用函数定义时候都会new一个，因此这里是硬拷贝
+        currentFunction.type = temp.getValue().toString();
         functions.add(currentFunction);
     }
 //<parameter-clause> ::=
@@ -824,7 +844,7 @@ public class Analyser {
         currentOperations.add(new Operation(index,"iret",null,null));
     }
 //<scan-statement> ::= 'scan' '(' <identifier> ')' ';'
-    public void scan_statement() throws NotFitException{
+    public void scan_statement() throws NotFitException{   //iscan
         Token currentToken = reader.readToken();
         if(currentToken.getType()!=RESERVEDWORD_SCAN){
             reader.unreadToken(currentToken);
@@ -836,6 +856,7 @@ public class Analyser {
             throw new RuntimeException();
         }
         currentToken = reader.readToken();
+        Token iden = currentToken;
         if(currentToken.getType()!=IDENTIFIER){
             throw new RuntimeException();
         }
@@ -847,9 +868,37 @@ public class Analyser {
         if(currentToken.getType()!=SEMICOLON){
             throw new RuntimeException();
         }
+        //首先loada获得idend的地址
+        //把iden的值取出来，（constant和global）先找全局变量，再找局部变量
+        String idenName = iden.getValue().toString();
+        //顺序：先找局部
+        int idenIndex;
+        if(currentFuncConstantsIndex.containsKey(idenName)){
+            throw new RuntimeException("constants不可变");
+        }
+        else if(currentFuncVarIndexs.containsKey(idenName)) {
+            idenIndex = (int) currentFuncVarIndexs.get(idenName);
+            int index = currentOperations.size();
+            currentOperations.add(new Operation(index,"loada",0,idenIndex));
+            currentOperations.add(new Operation(index+1,"iscan",null,null));
+            currentOperations.add(new Operation(index+2,"istore",null,null));
+        }
+        else if(globalConstantsIndex.containsKey(idenName)){ //考虑isstart
+            throw new RuntimeException("constants不可变");
+        }
+        else if(globalVarIndex.containsKey(idenName)){//注意这个要loada 1,index 考虑isstart
+            idenIndex = (int)globalVarIndex.get(idenName);
+            int index = currentOperations.size();
+            currentOperations.add(new Operation(index,"loada",1,idenIndex));
+            currentOperations.add(new Operation(index+1,"iscan",null,null));
+            currentOperations.add(new Operation(index+2,"istore",null,null));
+        }
+        else {
+            throw new RuntimeException();
+        }
     }
 //<print-statement> ::= 'print' '(' [<printable-list>] ')' ';'
-    public void print_statement() throws NotFitException{
+    public void print_statement() throws NotFitException{ //iprint
         Token currentToken = reader.readToken();
         if(currentToken.getType()!=RESERVEDWORD_PRINT){
             reader.unreadToken(currentToken);
@@ -861,6 +910,8 @@ public class Analyser {
         }
         try{
             printable_list();
+            int index = currentOperations.size();
+            currentOperations.add(new Operation(index,"printl",null,null));
         }
         catch (NotFitException ignored){}
         currentToken = reader.readToken();
@@ -873,6 +924,7 @@ public class Analyser {
 //<printable-list>  ::=  <expression> {','  <expression>}
     public void printable_list() throws NotFitException{
         try{
+
             expression();
         }
         catch (NotFitException e){
@@ -881,11 +933,22 @@ public class Analyser {
         Token currentToken=reader.readToken();
         if(currentToken.getType()!=COMMA){
             reader.unreadToken(currentToken);
+            //打印单条，带空格
+            int index = currentOperations.size();
+            currentOperations.add(new Operation(index,"iprint",null,null));
+            currentFuncStackIndex--;
+            currentOperations.add(new Operation(index+1,"ipush",32,null));//压入空格ascil码
+            currentOperations.add(new Operation(index+2,"cprint",null,null));
             return;
         }
         while (currentToken.getType()==COMMA){
             try {
                 expression();
+                int index = currentOperations.size();
+                currentOperations.add(new Operation(index,"iprint",null,null));
+                currentFuncStackIndex--;
+                currentOperations.add(new Operation(index+1,"ipush",32,null));//压入空格ascil码
+                currentOperations.add(new Operation(index+2,"cprint",null,null));
             }
             catch (NotFitException e){
                 throw  new RuntimeException();
@@ -900,9 +963,6 @@ public class Analyser {
 
     }
 
-    public void constant_declaration(){
-
-    }
 //<expression> ::= <additive-expression>
     public void expression() throws NotFitException{  //需要复原。需要把结果放到栈顶
         additive_expression();
@@ -911,6 +971,7 @@ public class Analyser {
     public void additive_expression() throws NotFitException{
         multiplicative_expression();
         Token currentToken = reader.readToken();
+        Token op = currentToken;
         while (currentToken.getType()==ADDITIVE_OPERATOR){
             try{
                 multiplicative_expression();
@@ -919,6 +980,14 @@ public class Analyser {
                 reader.unreadToken(currentToken);
                 return;
             }
+            int index = currentOperations.size();
+            if(op.getValue().toString().equals("+")){
+                currentOperations.add(new Operation(index,"iadd",null,null));
+            }
+            else {
+                currentOperations.add(new Operation(index,"isub",null,null));
+            }
+            currentFuncStackIndex--;
             currentToken = reader.readToken();
         }
         reader.unreadToken(currentToken);
@@ -927,6 +996,7 @@ public class Analyser {
     public void multiplicative_expression() throws NotFitException{
         unary_expression();
         Token currentToken = reader.readToken();
+        Token op = currentToken;
         while (currentToken.getType()==MULTIPLICATIVE_OPERATOR){
             try{
                 unary_expression();
@@ -935,6 +1005,14 @@ public class Analyser {
                 reader.unreadToken(currentToken);
                 return;
             }
+            int index = currentOperations.size();
+            if(op.getValue().toString().equals("*")){
+                currentOperations.add(new Operation(index,"imul",null,null));
+            }
+            else {
+                currentOperations.add(new Operation(index,"idiv",null,null));
+            }
+            currentFuncStackIndex--;
             currentToken = reader.readToken();
         }
         reader.unreadToken(currentToken);
@@ -945,8 +1023,15 @@ public class Analyser {
         Token currentToken = reader.readToken();
         if(currentToken.getType()!=ADDITIVE_OPERATOR){
             reader.unreadToken(currentToken);
+            primary_expression();
         }
-        primary_expression();
+        else {
+            primary_expression();
+            int index = currentOperations.size();
+            if(currentToken.getValue().toString().equals("-")){
+                currentOperations.add(new Operation(index,"ineg",null,null));//栈无变化
+            }
+        }
     }
 //<primary-expression> ::=
 //     '('<expression>')'
@@ -1018,10 +1103,19 @@ public class Analyser {
                             currentOperations.add(new Operation(index+1,"iload",null,null));
                         }
                     }
+                    else {
+                        throw new RuntimeException();
+                    }
                     return;
                 }
+
                 reader.unreadToken(currentToken);
                 reader.unreadToken(iden);
+                int fIndex =(int)functionIndex.get(iden.getValue().toString());
+                Function f = functions.get(fIndex);
+                if(f.type.equals("void")){
+                    throw new RuntimeException("表达式中的函数不能为void");
+                }
                 function_call();
                 break;
             case LEFT_PARENTHESES:
@@ -1031,7 +1125,7 @@ public class Analyser {
                 }
                 catch (NotFitException e){
                     reader.unreadToken(currentToken);
-                    throw new NotFitException("primary_expression fail");
+                    throw new NotFitException("expression fail");
                 }
                 Token left = currentToken;
                 currentToken = reader.readToken();
@@ -1043,6 +1137,7 @@ public class Analyser {
     }
 //<function-call> ::= <identifier> '(' [<expression-list>] ')'
     public void function_call() throws NotFitException{
+        //主要工作：压入参数，然后直接call 就行
         Token currentToken = reader.readToken();
         if(currentToken.getType()!=IDENTIFIER){
             reader.unreadToken(currentToken);
@@ -1056,7 +1151,7 @@ public class Analyser {
             throw new NotFitException("function_call not fit");
         }
         try{
-            expression_list();
+            expression_list();//这里要压入参数
         }
         catch (NotFitException e){
 
@@ -1064,6 +1159,10 @@ public class Analyser {
         currentToken = reader.readToken();
         if(currentToken.getType()!=RIGHT_PARENTHESES)
             throw new RuntimeException();
+        //call就行
+        int index = currentOperations.size();
+        int funcIndex = (int)globalConstantsIndex.get("\""+iden.getValue().toString()+"\"");
+        currentOperations.add(new Operation(index,"call",funcIndex,null));
     }
 //<expression-list> ::= <expression>{','<expression>}
     public void expression_list() throws NotFitException{

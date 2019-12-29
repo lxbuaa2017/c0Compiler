@@ -7,6 +7,7 @@ public class Function {
 //0 0（函数名的位置） 4（参数个数） 1（作用域，基础只为0或者1）    # .F0 hanoi
 //1 2 0 1    # .F1 main
     private int index;
+    public String type;
     public int nameIndex;
     public int paramNum;
     public int level;
