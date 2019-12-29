@@ -14,7 +14,7 @@ import java.util.ArrayList;
 public class Test {
 
     public static void main(String[] args) throws IOException, TokenizerException {
-        ArrayList<Token> result = Tokenizer.tokenizer(new SourceFileReader("F:\\2019秋季\\编译原理\\c0Compiler\\src\\com\\lx\\test.c0"));
+        ArrayList<Token> result = Tokenizer.tokenizer(new SourceFileReader("/home/lx/IdeaProjects/c0Compiler/src/com/lx/test.c0"));
         TokenReader reader = new TokenReader(result);
         Analyser analyser =new Analyser(reader);
         try{

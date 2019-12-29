@@ -307,12 +307,7 @@ public class Expression {
 		}
 	}
 	
-	/**
-	 * init and check expression string
-	 * @param expStr
-	 * @return
-	 * @throws Exception
-	 */
+
 	private String initAndCheck(String expStr) throws Exception{
 		if(expStr == null || expStr.trim().equals(""))
 			throw new Exception("expression str error, is empty.");

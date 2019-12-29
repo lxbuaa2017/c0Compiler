@@ -1,0 +1,9 @@
+int test(int a){
+print(a);
+return a+1;
+}
+int main(){
+int b=test(9);
+print(b+3);
+return 0;
+}
