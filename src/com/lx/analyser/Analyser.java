@@ -94,15 +94,15 @@ public class Analyser {
         }
         reader.unreadToken(currentToken);
 //
-        if(currentToken.getType()==CONST_QUALIFIER){
-            try{
-                variable_declaration();
-            }
-            catch (NotFitException e){
-                throw  new AnalyserException("const定义错误");
-            }
-        }
-        else {
+//        if(currentToken.getType()==CONST_QUALIFIER){
+//            try{
+//                variable_declaration();
+//            }
+//            catch (NotFitException e){
+//                throw  new AnalyserException("const定义错误");
+//            }
+//        }
+//        else {
             try{
                 variable_declaration();
             }
@@ -120,13 +120,16 @@ public class Analyser {
                     e2.printStackTrace();
                 }
             }
-        }
+//        }
         while (!varFinish){
             try{
                 variable_declaration();
             }
             catch (NotFitException e){
-//                varFinish=true;
+                  varFinish=true;
+            }
+            catch (NullPointerException e){
+                break;
             }
         }
         while (true){
@@ -137,7 +140,7 @@ public class Analyser {
                 break;
             }
             catch (NullPointerException e2){
-                e2.printStackTrace();
+//                e2.printStackTrace();
                 break;
             }
         }
@@ -176,17 +179,23 @@ public class Analyser {
             throw new NotFitException("<variable-declaration>中识别不到合法的<init-declarator>");
         }
         String idenName = (String) currentToken.getValue();//变量名
+        //在这里判断重命名问题
+        if(isStart){
+            if(globalConstantsIndex.containsKey(idenName)||globalVarIndex.containsKey(idenName))
+                throw new RuntimeException(idenName+" :全局变量命名重复。");
+        }
+        else {
+            if(currentFuncVarIndexs.containsKey(idenName)||currentFuncConstantsIndex.containsKey(idenName))
+                throw new RuntimeException(idenName+" :局部变量命名重复。");
+        }
         currentToken=reader.readToken();
         if(currentToken.getType()!=ASSIGNMENT_OPERATOR){
-            Token simi = reader.readToken();
-            if(simi.getType()!=SEMICOLON){
+            Token simi = currentToken;
+            if(simi.getType()!=SEMICOLON&&simi.getType()!=COMMA){
                 reader.pushBackTokens();
                 throw new NotFitException("");
             }
-            else {
-                reader.unreadToken(simi);
-            }
-            reader.unreadToken(currentToken);
+            reader.unreadToken(simi);
             //此时比如定义了个int a, 是start的话，如果是const，就存.constants，start里用loadc,不是const就bipush
             if(isStart){
                 if(currentConstFlag){
@@ -226,6 +235,7 @@ public class Analyser {
                 if(isStart){
                     //这里的constant计算由编译器完成
                     String exprStr = "";
+                    currentToken=reader.readToken();
                     while (currentToken.getType()!=SEMICOLON&&currentToken.getType()!=COMMA){
                         exprStr+=currentToken.getValue();
                         currentToken = reader.readToken();
@@ -266,15 +276,17 @@ public class Analyser {
                 currentToken = reader.readToken();
                 if(currentToken.getType()!=COMMA){
                     reader.unreadToken(currentToken);
-                    return;
+                    break;
                 }
-                temp = currentToken;
+//                temp = currentToken;
             }
             catch (NotFitException e){
-                reader.unreadToken(temp);
-                return;
+//                reader.unreadToken(temp);
+                throw new RuntimeException();
             }
         }
+        if(currentToken.getType()!=SEMICOLON)
+            throw new RuntimeException("变量定义缺少分号");
 //        <init-declarator-list> ::=
 //        <init-declarator>{','<init-declarator>}
 //        <init-declarator> ::=
@@ -332,6 +344,7 @@ public class Analyser {
                 if(isStart){
                     //这里的constant计算由编译器完成
                     String exprStr = "";
+                    currentToken = reader.readToken();
                     while (currentToken.getType()!=SEMICOLON&&currentToken.getType()!=COMMA){
                         exprStr+=currentToken.getValue();
                         currentToken = reader.readToken();
@@ -420,8 +433,14 @@ public class Analyser {
         }
         globalConstantsIndex.put("\""+funcName+"\"",nameIndex);
         currentParamNum = 0;
+        int fIndex = functions.size();
+        functionIndex.put(funcName,fIndex);
+        Function currentFunction;
         try{
             parameter_clause();
+            currentFunction = new Function(fIndex,nameIndex,currentParamNum,1);
+            currentFunction.type = temp.getValue().toString();
+            functions.add(currentFunction);
             compound_statement();
         }
         catch (NotFitException e){
@@ -430,12 +449,7 @@ public class Analyser {
             throw new NotFitException("functionDefinition构建失败");
         }
         //funcName currentParamNum已知 作用域都为1；接下来考虑operation
-        int fIndex = functions.size();
-        functionIndex.put(funcName,fIndex);
-        Function currentFunction = new Function(fIndex,nameIndex,currentParamNum,1);
-        currentFunction.operations=currentOperations;//每次重新调用函数定义时候都会new一个，因此这里是硬拷贝
-        currentFunction.type = temp.getValue().toString();
-        functions.add(currentFunction);
+        currentFunction.operations=currentOperations;
     }
 //<parameter-clause> ::=
 //    '(' [<parameter-declaration-list>] ')'
@@ -658,6 +672,7 @@ public class Analyser {
                 Token temp = currentToken;
                 currentToken=reader.readToken();
                 reader.unreadToken(currentToken);
+                reader.unreadToken(temp);
                 if(currentToken.getType()==LEFT_PARENTHESES){
                     try{
                         function_call();
@@ -998,9 +1013,53 @@ public class Analyser {
         reader.unreadToken(currentToken);
     }
 
-
+//<assignment-expression> ::=
+//    <identifier><assignment-operator><expression>
     public void assignment_expression() throws NotFitException{
+        //先找到iden的值
+            Token iden = reader.readToken();
+            if(iden.getType()!=IDENTIFIER){
+                reader.unreadToken(iden);
+                throw new NotFitException("");
+            }
+            Token assign =reader.readToken();
+            if(assign.getType()!=ASSIGNMENT_OPERATOR){
+                reader.unreadToken(assign);
+                throw new NotFitException("without '='");
+            }
+            expression();
+            //把iden的值取出来，（constant和global）先找全局变量，再找局部变量
+            String idenName = iden.getValue().toString();
+            //顺序：先找局部
+            int idenIndex;
 
+            if(currentFuncVarIndexs.containsKey(idenName)) {
+                idenIndex = (int) currentFuncVarIndexs.get(idenName);
+                int index = currentOperations.size();
+                currentOperations.add(new Operation(index,"loada",0,idenIndex));
+                currentFuncStackIndex++;
+                expression();
+                index = currentOperations.size();
+                currentOperations.add(new Operation(index,"istore",null,null));
+            }
+            else if(globalVarIndex.containsKey(idenName)){//注意这个要loada 1,index 考虑isstart
+                idenIndex = (int)globalVarIndex.get(idenName);
+                int index = currentOperations.size();
+                currentOperations.add(new Operation(index,"loada",1,idenIndex));
+                currentFuncStackIndex++;
+                expression();
+                index = currentOperations.size();
+                currentOperations.add(new Operation(index,"istore",null,null));
+            }
+            else if(globalConstantsIndex.containsKey(idenName)){ //考虑isstart
+                throw new RuntimeException("const不能被赋值");
+            }
+            else if(currentFuncConstantsIndex.containsKey(idenName)){
+                throw new RuntimeException("const不能被赋值");
+            }
+            else {
+                throw new RuntimeException();
+            }
     }
 
 //<expression> ::= <additive-expression>
