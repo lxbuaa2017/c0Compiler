@@ -58,7 +58,24 @@ public class Analyser {
 //.F1: #main
 //0    loadc 4
     public void writeOut(){
-
+        System.out.println(".constants:");
+        for (Constant each:constants){
+            System.out.println(each.toString());
+        }
+        System.out.println(".start:");
+        for(Operation each:starts){
+            System.out.println(each.toString());
+        }
+        System.out.println(".functions:");
+        for(Function each:functions){
+            System.out.println(each.toString());
+        }
+        for (Function each:functions){
+            System.out.println(".F"+each.index+":");
+            for(Operation eachOperation:each.operations){
+                System.out.println(eachOperation.toString());
+            }
+        }
     }
 
 
@@ -96,7 +113,11 @@ public class Analyser {
                     varFinish = true;
                 }
                 catch (NotFitException e1){
+                    e1.printStackTrace();
                     throw  new AnalyserException("开头定义错误");
+                }
+                catch (NullPointerException e2){
+                    e2.printStackTrace();
                 }
             }
         }
@@ -105,8 +126,7 @@ public class Analyser {
                 variable_declaration();
             }
             catch (NotFitException e){
-                varFinish=true;
-                break;
+//                varFinish=true;
             }
         }
         while (true){
@@ -116,10 +136,15 @@ public class Analyser {
             catch (NotFitException e){
                 break;
             }
+            catch (NullPointerException e2){
+                e2.printStackTrace();
+                break;
+            }
         }
         currentToken = reader.readToken();
         if(currentToken!=null)
-            throw new RuntimeException();
+            throw new RuntimeException(currentToken.toString());
+        writeOut();
     }
 //<variable-declaration> ::=
 //    [<const-qualifier>]<type-specifier><init-declarator-list>';'
@@ -142,7 +167,8 @@ public class Analyser {
             throw new NotFitException("<variable-declaration>中识别不到合法的<type-specifier>");
         }
         if(!currentToken.getValue().equals("int")){
-            throw new RuntimeException("void不能声明变量");
+            reader.pushBackTokens();
+            throw new NotFitException("void不能声明变量");
         }
         currentToken=reader.readToken();
         if(currentToken.getType()!=IDENTIFIER){
@@ -152,6 +178,14 @@ public class Analyser {
         String idenName = (String) currentToken.getValue();//变量名
         currentToken=reader.readToken();
         if(currentToken.getType()!=ASSIGNMENT_OPERATOR){
+            Token simi = reader.readToken();
+            if(simi.getType()!=SEMICOLON){
+                reader.pushBackTokens();
+                throw new NotFitException("");
+            }
+            else {
+                reader.unreadToken(simi);
+            }
             reader.unreadToken(currentToken);
             //此时比如定义了个int a, 是start的话，如果是const，就存.constants，start里用loadc,不是const就bipush
             if(isStart){
@@ -356,7 +390,7 @@ public class Analyser {
 //    int func(int a){}
 //0 0（函数名的位置） 4（参数个数） 1（作用域，基础只为0或者1）
 //    functions
-    public void function_definition() throws NotFitException{
+    public void function_definition() throws NotFitException,NullPointerException{
         currentFuncVarIndexs = new HashMap<>();
         currentOperations = new ArrayList<>();
         currentParamNum = 0;
@@ -368,7 +402,7 @@ public class Analyser {
         Token currentToken = reader.readToken();
         if(currentToken.getType()!=SIMPLE_TYPE_SPECIFIER) {
             reader.unreadToken(currentToken);
-            throw new NotFitException("functionDefinition中没有type-specifier");
+            throw new NotFitException("functionDefinition中没有type-specifier"+"  "+currentToken.toString());
         }
         Token temp = currentToken;//void int
         currentToken=reader.readToken();
@@ -392,6 +426,7 @@ public class Analyser {
         }
         catch (NotFitException e){
             reader.pushBackTokens();//恢复现场，谨慎考虑其与其他函数关系，因为pushback数组是全局的
+            e.printStackTrace();
             throw new NotFitException("functionDefinition构建失败");
         }
         //funcName currentParamNum已知 作用域都为1；接下来考虑operation
@@ -498,7 +533,7 @@ public class Analyser {
         }
     }
 //<compound-statement> ::=
-//    '{' {<variable-declaration>} <statement-seq> '}'
+//    '{' {<variable-declaration>} <statement-seq> '}'      //pushBack的锅！！
     public void compound_statement() throws NotFitException{
         reader.clearPushBack();
         Token currentToken = reader.readToken();
@@ -525,7 +560,7 @@ public class Analyser {
         currentToken = reader.readToken();
         if(currentToken.getType()!=RIGHT_BRACKET){
             reader.pushBackTokens();
-            throw new NotFitException("<compound-statement>中没有}");
+            throw new NotFitException("<compound-statement>中没有} "+currentToken.toString());
         }
     }
 
@@ -571,6 +606,7 @@ public class Analyser {
                 }
                 break;
             case RESERVEDWORD_IF:
+                reader.unreadToken(currentToken);
                 try{
                     condition_statement();
                 }
@@ -579,6 +615,7 @@ public class Analyser {
                 }
                 break;
             case RESERVEDWORD_WHILE:
+                reader.unreadToken(currentToken);
                 try{
                     loop_statement();
                 }
@@ -587,6 +624,7 @@ public class Analyser {
                 }
                 break;
             case RESERVEDWORD_RETURN:
+                reader.unreadToken(currentToken);
                 try{
                     jump_statement();
                 }
@@ -595,6 +633,7 @@ public class Analyser {
                 }
                 break;
             case RESERVEDWORD_PRINT:
+                reader.unreadToken(currentToken);
                 try{
                     print_statement();
                 }
@@ -603,6 +642,7 @@ public class Analyser {
                 }
                 break;
             case RESERVEDWORD_SCAN:
+                reader.unreadToken(currentToken);
                 try{
                     scan_statement();
                 }
@@ -1181,7 +1221,7 @@ public class Analyser {
         reader.unreadToken(currentToken);
     }
 //<integer-literal> ::=  <decimal-literal>|<hexadecimal-literal>
-    public void integer_literal() throws NotFitException{
+    public void integer_literal() throws NotFitException{ //得判断istart
         Token currentToken = reader.readToken();
         if(currentToken.getType()!=DECIMAL_LITERAL&&currentToken.getType()!=HEXADECIMAL_LITERAL){
             reader.unreadToken(currentToken);
@@ -1191,8 +1231,15 @@ public class Analyser {
             Integer decimal = Integer.valueOf(num,16);//十六进制转十进制
             num = decimal.toString();
         }
-        int index = currentOperations.size();
-        currentOperations.add(new Operation(index,"ipush",num,null));
-        currentFuncStackIndex++;
+        if(isStart){
+            int startIndex = starts.size();
+            starts.add(new Operation(startIndex,"ipush",num,null));
+            startIndex++;
+        }
+        else {
+            int index = currentOperations.size();
+            currentOperations.add(new Operation(index,"ipush",num,null));
+            currentFuncStackIndex++;
+        }
     }
 }

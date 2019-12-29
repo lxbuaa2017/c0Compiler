@@ -6,7 +6,7 @@ public class Function {
 //    .functions:
 //0 0（函数名的位置） 4（参数个数） 1（作用域，基础只为0或者1）    # .F0 hanoi
 //1 2 0 1    # .F1 main
-    private int index;
+    public int index;
     public String type;
     public int nameIndex;
     public int paramNum;
@@ -26,6 +26,6 @@ public class Function {
 
     @Override
     public String toString() {
-        return nameIndex+" "+paramNum+" "+level;
+        return index+" "+nameIndex+" "+paramNum+" "+level;
     }
 }
