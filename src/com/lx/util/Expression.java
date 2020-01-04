@@ -343,13 +343,13 @@ public class Expression {
 	private Double getDouble(Object val) throws Exception{
 		if(val == null)
 			throw new Exception("expression str error, Double null.");
-		return new Double(val.toString());
+		return  Double.valueOf(val.toString());
 	}
 	
 	private Integer getInteger(Object val) throws Exception{
 		if(val == null)
 			throw new Exception("expression str error, Double null.");
-		return new Integer(val.toString());
+		return Integer.valueOf(val.toString());
 	}
 	
 	private boolean isHightLeavl(String val){

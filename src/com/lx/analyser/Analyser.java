@@ -1215,6 +1215,7 @@ public class Analyser {
                 if(f.type.equals("void")){
                     throw new RuntimeException("表达式中的函数不能为void");
                 }
+
                 function_call();
                 break;
             case LEFT_PARENTHESES:
