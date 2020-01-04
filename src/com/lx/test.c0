@@ -1,8 +1,15 @@
-int test(){
-return 1;
+void hanoi(int n, int a, int b, int c) {
+   if (n == 1) {
+      print(a, -1, c);
+   }
+   else {
+      hanoi(n-1, a, c, b);
+      print(a, -2, c);
+      hanoi(n-1, b, a, c);
+   }
 }
-int main(){
-int b=test();
-print(b+3);
-return 0;
+
+int main() {
+   hanoi(3, 1, 2, 3);
+   return 0;
 }

@@ -58,6 +58,12 @@ public class Analyser {
 //.F1: #main
 //0    loadc 4
     public void writeOut(){
+        for(Function each:functions){
+            if(each.type.equals("void")){
+                int index = each.operations.size();
+                each.operations.add(new Operation(index,"ret",null,null));
+            }
+        }
         System.out.println(".constants:");
         for (Constant each:constants){
             System.out.println(each.toString());
@@ -495,6 +501,7 @@ public class Analyser {
             }
             try{
                 parameter_declaration();
+                currentParamNum++;
             }
             catch (NotFitException e){
                 reader.unreadToken(currentToken);
@@ -767,11 +774,11 @@ public class Analyser {
         //只有一个表达式的情况
         if(relational_operator == null){
             //je,if(0)就跳到if语句段后面去
-            int jmpIndex = currentOperations.size()+1;
+            int jmpIndex = currentOperations.size();
             judgeCondition.setOperation(index,"je",jmpIndex,null);
         }
         else {
-            int jmpIndex = currentOperations.size()+1;
+            int jmpIndex = currentOperations.size();
             switch (relational_operator){
                 case "<":
                     //左边大于等于的情况下跳，即result=1或0,jge
@@ -840,11 +847,11 @@ public class Analyser {
         currentOperations.add(new Operation(jumpBackIndex,"jmp",index,null));
         if(relational_operator == null){
             //je,if(0)就跳到if语句段后面去
-            int jmpIndex = currentOperations.size()+1;
+            int jmpIndex = currentOperations.size();
             judgeCondition.setOperation(index,"je",jmpIndex,null);
         }
         else {
-            int jmpIndex = currentOperations.size()+1;
+            int jmpIndex = currentOperations.size();
             switch (relational_operator){
                 case "<":
                     //左边大于等于的情况下跳，即result=1或0,jge
@@ -979,27 +986,22 @@ public class Analyser {
 //<printable-list>  ::=  <expression> {','  <expression>}
     public void printable_list() throws NotFitException{
         try{
-
             expression();
         }
         catch (NotFitException e){
             throw new NotFitException("printable-list without expression");
         }
         Token currentToken=reader.readToken();
-        if(currentToken.getType()!=COMMA){
-            reader.unreadToken(currentToken);
             //打印单条，带空格
-            int index = currentOperations.size();
-            currentOperations.add(new Operation(index,"iprint",null,null));
-            currentFuncStackIndex--;
-            currentOperations.add(new Operation(index+1,"ipush",32,null));//压入空格ascil码
-            currentOperations.add(new Operation(index+2,"cprint",null,null));
-            return;
-        }
+        int index = currentOperations.size();
+        currentOperations.add(new Operation(index,"iprint",null,null));
+        currentFuncStackIndex--;
+        currentOperations.add(new Operation(index+1,"ipush",32,null));//压入空格ascil码
+        currentOperations.add(new Operation(index+2,"cprint",null,null));
         while (currentToken.getType()==COMMA){
             try {
                 expression();
-                int index = currentOperations.size();
+                index = currentOperations.size();
                 currentOperations.add(new Operation(index,"iprint",null,null));
                 currentFuncStackIndex--;
                 currentOperations.add(new Operation(index+1,"ipush",32,null));//压入空格ascil码
@@ -1215,8 +1217,9 @@ public class Analyser {
                 if(f.type.equals("void")){
                     throw new RuntimeException("表达式中的函数不能为void");
                 }
-
+                int temp = currentFuncStackIndex;
                 function_call();
+
                 break;
             case LEFT_PARENTHESES:
                 currentToken = reader.readToken();
@@ -1237,6 +1240,7 @@ public class Analyser {
     }
 //<function-call> ::= <identifier> '(' [<expression-list>] ')'
     public void function_call() throws NotFitException{
+        int temp =currentFuncStackIndex;
         //主要工作：压入参数，然后直接call 就行
         Token currentToken = reader.readToken();
         if(currentToken.getType()!=IDENTIFIER){
@@ -1261,8 +1265,18 @@ public class Analyser {
             throw new RuntimeException();
         //call就行
         int index = currentOperations.size();
-        int funcIndex = (int)globalConstantsIndex.get("\""+iden.getValue().toString()+"\"");
+        int nameIndex = (int)globalConstantsIndex.get("\""+iden.getValue().toString()+"\"");
+        int funcIndex=-1;
+        for(Function each:functions){
+            if(each.nameIndex==nameIndex){
+                funcIndex=each.index;break;
+            }
+        }
+        if(funcIndex==-1){
+            throw new RuntimeException("函数不存在");
+        }
         currentOperations.add(new Operation(index,"call",funcIndex,null));
+        currentFuncStackIndex = temp+1;
     }
 //<expression-list> ::= <expression>{','<expression>}
     public void expression_list() throws NotFitException{
