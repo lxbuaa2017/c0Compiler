@@ -14,14 +14,18 @@ import java.util.ArrayList;
 public class Test {
 
     public static void main(String[] args) throws IOException, TokenizerException {
-        ArrayList<Token> result = Tokenizer.tokenizer(new SourceFileReader("/home/lx/IdeaProjects/c0Compiler/src/com/lx/test.c0"));
-        TokenReader reader = new TokenReader(result);
-        Analyser analyser =new Analyser(reader);
-        try{
-            analyser.c0_program();
-        }
-        catch (Exception e){
-            e.printStackTrace();
-        }
+//        ArrayList<Token> result = Tokenizer.tokenizer(new SourceFileReader("/home/lx/IdeaProjects/c0Compiler/src/com/lx/test.c0"));
+//        TokenReader reader = new TokenReader(result);
+//        Analyser analyser =new Analyser(reader);
+//        try{
+//            analyser.c0_program();
+//        }
+//        catch (Exception e){
+//            e.printStackTrace();
+//        }
+        String num = "babe";
+//        num=num.substring(2);
+        int decimal = (int)Long.parseLong(num,16);//十六进制转十进制
+        System.out.println(decimal);
     }
 }

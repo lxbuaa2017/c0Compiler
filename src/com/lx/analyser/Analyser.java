@@ -376,7 +376,7 @@ public class Analyser {
             else {//已经赋值的，不是constant的
                 if(isStart){
                     //int a = 3+3;
-                    globalVarIndex.put(idenName,stackIndex-1);
+                    globalVarIndex.put(idenName,stackIndex);
                 }
                 else {
                     currentFuncVarIndexs.put(idenName,currentFuncStackIndex-1);
@@ -806,12 +806,19 @@ public class Analyser {
             }
         }
         currentToken = reader.readToken();
+
         if(currentToken!=null){
             if(currentToken.getType()!=RESERVEDWORD_ELSE){
                 reader.unreadToken(currentToken);
             }
             else {
+                judgeCondition.opRand1=(int)(judgeCondition.opRand1)+1;
+                int beforeElseIndex = currentOperations.size();
+                Operation jumpAcrossElse = new Operation(beforeElseIndex,null,null,null);
+                currentOperations.add(jumpAcrossElse);//利用浅拷贝的特性之后将其更新
                 statement();
+                int jumpTo = currentOperations.size();
+                jumpAcrossElse.setOperation(beforeElseIndex,"jmp",jumpTo,null);
             }
         }
     }
@@ -831,6 +838,7 @@ public class Analyser {
             reader.unreadToken(temp);
             throw new NotFitException("(");
         }
+        int whileIndex = currentOperations.size();
         String relational_operator = condition();
         currentToken = reader.readToken();
         if(currentToken.getType()!=RIGHT_PARENTHESES){
@@ -842,9 +850,9 @@ public class Analyser {
         Operation judgeCondition = new Operation(index,null,null,null);
         currentOperations.add(judgeCondition);//利用浅拷贝的特性之后将其更新
         statement();
-        //在最后加一条跳回jump语句的语句
+        //在最后加一条跳回的语句
         int jumpBackIndex = currentOperations.size();
-        currentOperations.add(new Operation(jumpBackIndex,"jmp",index,null));
+        currentOperations.add(new Operation(jumpBackIndex,"jmp",whileIndex,null));
         if(relational_operator == null){
             //je,if(0)就跳到if语句段后面去
             int jmpIndex = currentOperations.size();
@@ -1029,7 +1037,6 @@ public class Analyser {
                 reader.unreadToken(assign);
                 throw new NotFitException("without '='");
             }
-            expression();
             //把iden的值取出来，（constant和global）先找全局变量，再找局部变量
             String idenName = iden.getValue().toString();
             //顺序：先找局部
@@ -1070,6 +1077,13 @@ public class Analyser {
     }
 //<additive-expression> ::=   <multiplicative-expression>{<additive-operator><multiplicative-expression>}
     public void additive_expression() throws NotFitException{
+        ArrayList<Operation> operations;
+        if(isStart){
+            operations=starts;
+        }
+        else {
+            operations=currentOperations;
+        }
         multiplicative_expression();
         Token currentToken = reader.readToken();
         Token op = currentToken;
@@ -1081,20 +1095,30 @@ public class Analyser {
                 reader.unreadToken(currentToken);
                 return;
             }
-            int index = currentOperations.size();
+            int index = operations.size();
             if(op.getValue().toString().equals("+")){
-                currentOperations.add(new Operation(index,"iadd",null,null));
+                operations.add(new Operation(index,"iadd",null,null));
             }
             else {
-                currentOperations.add(new Operation(index,"isub",null,null));
+                operations.add(new Operation(index,"isub",null,null));
             }
-            currentFuncStackIndex--;
+            if(isStart)
+                stackIndex--;
+            else
+                currentFuncStackIndex--;
             currentToken = reader.readToken();
         }
         reader.unreadToken(currentToken);
     }
 //<multiplicative-expression> ::=  <unary-expression>{<multiplicative-operator><unary-expression>}
     public void multiplicative_expression() throws NotFitException{
+        ArrayList<Operation> operations;
+        if(isStart){
+            operations=starts;
+        }
+        else {
+            operations=currentOperations;
+        }
         unary_expression();
         Token currentToken = reader.readToken();
         Token op = currentToken;
@@ -1106,14 +1130,17 @@ public class Analyser {
                 reader.unreadToken(currentToken);
                 return;
             }
-            int index = currentOperations.size();
+            int index = operations.size();
             if(op.getValue().toString().equals("*")){
-                currentOperations.add(new Operation(index,"imul",null,null));
+                operations.add(new Operation(index,"imul",null,null));
             }
             else {
-                currentOperations.add(new Operation(index,"idiv",null,null));
+                operations.add(new Operation(index,"idiv",null,null));
             }
-            currentFuncStackIndex--;
+            if(isStart)
+                stackIndex--;
+            else
+                currentFuncStackIndex--;
             currentToken = reader.readToken();
         }
         reader.unreadToken(currentToken);
@@ -1121,6 +1148,13 @@ public class Analyser {
 
 //    <unary-expression> ::= [<additive-operator>]<primary-expression>
     public void unary_expression() throws NotFitException{
+        ArrayList<Operation> operations;
+        if(isStart){
+            operations=starts;
+        }
+        else {
+            operations=currentOperations;
+        }
         Token currentToken = reader.readToken();
         if(currentToken.getType()!=ADDITIVE_OPERATOR){
             reader.unreadToken(currentToken);
@@ -1128,9 +1162,9 @@ public class Analyser {
         }
         else {
             primary_expression();
-            int index = currentOperations.size();
+            int index = operations.size();
             if(currentToken.getValue().toString().equals("-")){
-                currentOperations.add(new Operation(index,"ineg",null,null));//栈无变化
+                operations.add(new Operation(index,"ineg",null,null));//栈无变化
             }
         }
     }
@@ -1302,13 +1336,14 @@ public class Analyser {
         }
         String num = currentToken.getValue().toString();
         if(currentToken.getType()==HEXADECIMAL_LITERAL){
-            Integer decimal = Integer.valueOf(num,16);//十六进制转十进制
-            num = decimal.toString();
+            num=num.substring(2);
+            int decimal = (int)Long.parseLong(num,16);//十六进制转十进制
+            num = Integer.toString(decimal);
         }
         if(isStart){
             int startIndex = starts.size();
             starts.add(new Operation(startIndex,"ipush",num,null));
-            startIndex++;
+            stackIndex++;
         }
         else {
             int index = currentOperations.size();

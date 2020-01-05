@@ -1,10 +1,10 @@
 package com.lx.analyser.instruction;
 
 public class Operation {
-    private int index;
-    private String opCode;
-    private Object opRand1;
-    private Object opRand2;
+    public int index;
+    public String opCode;
+    public Object opRand1;
+    public Object opRand2;
 
     public Operation(int index,String opCode, Object opRand1, Object opRand2) {
         this.index=index;
