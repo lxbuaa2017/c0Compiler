@@ -17,6 +17,9 @@ import static com.lx.tokenizer.Type.*;
 public class Analyser {
     private TokenReader reader;
 
+    private boolean returnFlag=false;
+    private boolean returnValue=false;
+
     private String currentFunctionType;
 
     private int currentParamNum;
@@ -392,6 +395,8 @@ public class Analyser {
 //0 0（函数名的位置） 4（参数个数） 1（作用域，基础只为0或者1）
 //    functions
     public void function_definition() throws NotFitException,NullPointerException{
+        returnFlag=false;
+        returnValue=false;
         currentFuncVarIndexs = new HashMap<>();
         currentOperations = new ArrayList<>();
         currentParamNum = 0;
@@ -405,7 +410,7 @@ public class Analyser {
             reader.unreadToken(currentToken);
             throw new NotFitException("functionDefinition中没有type-specifier"+"  "+currentToken.toString());
         }
-
+        currentFunctionType = currentToken.getValue().toString();
         Token temp = currentToken;//void int
         currentToken=reader.readToken();
         if(currentToken.getType()!=IDENTIFIER) {
@@ -413,7 +418,6 @@ public class Analyser {
             reader.unreadToken(temp);
             throw new NotFitException("functionDefinition中没有identifier");
         }
-        currentFunctionType = currentToken.getValue().toString();
         String funcName = new String(currentToken.getValue().toString());//防止浅拷贝
         //把函数名存到constants里
         int nameIndex = constants.size();
@@ -438,6 +442,15 @@ public class Analyser {
             e.printStackTrace();
             throw new NotFitException("functionDefinition构建失败");
         }
+        if(currentFunctionType.equals("int")){
+            if(returnFlag==false||returnValue==false){
+                throw new RuntimeException("int必须有返回值");
+            }
+        }
+//        if(currentFunctionType.equals("void")){
+//            if(returnValue==true)
+//                throw new RuntimeException("void不能有返回值");
+//        }
         //funcName currentParamNum已知 作用域都为1；接下来考虑operation
         currentFunction.operations=currentOperations;
     }
@@ -629,6 +642,7 @@ public class Analyser {
                 }
                 break;
             case RESERVEDWORD_RETURN:
+                returnFlag=true;
                 reader.unreadToken(currentToken);
                 try{
                     jump_statement();
@@ -884,18 +898,21 @@ public class Analyser {
             reader.unreadToken(currentToken);
             throw new NotFitException("return");
         }
-        Token t = reader.readToken();
+        currentToken = reader.readToken();
         if(currentToken.getType()==SEMICOLON&&currentFunctionType.equals("int")){
-            System.out.println("int需要有返回值!");
             throw new RuntimeException("int需要有返回值!");
         }
-        reader.unreadToken(t);
+        if(currentToken.getType()!=SEMICOLON&&currentFunctionType.equals("void")){
+            throw new RuntimeException("void不能有返回值!");
+        }
+        reader.unreadToken(currentToken);
         try{
             expression();
+            returnValue=true;
         }
         catch (NotFitException e){
             if(currentFunctionType.equals("int")){
-                System.out.println("int需要有返回值!");
+//                System.out.println("int需要有返回值!");
                 throw new RuntimeException("int需要有返回值!");
             }
         }
