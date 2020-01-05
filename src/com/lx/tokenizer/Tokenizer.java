@@ -30,7 +30,38 @@ public class Tokenizer {
             while(currentChar==' '||currentChar=='\n'||currentChar=='\t'||currentChar=='\r'){
                 currentChar = reader.readChar();
             }
-
+            //处理单行注释
+            if(currentChar=='/'){
+                char temp = reader.readChar();
+                if(temp!='/'&&temp!='*'){
+                    reader.unReadChar(temp);
+                }
+                else if(temp=='/'){
+                    while (temp!='\n'&&temp!='\r'){
+                        temp=reader.readChar();
+                    }
+                    currentChar=reader.readChar();
+                }
+                else if (temp=='*'){
+                    currentChar='0';
+                    while (true){
+                        currentChar=reader.readChar();
+                        if(currentChar=='*'){
+                            char next = reader.readChar();
+                            if(next=='/'){
+                                currentChar=reader.readChar();
+                                break;
+                            }
+                            else {
+                                reader.unReadChar(next);
+                            }
+                        }
+                    }
+                }
+            }
+            while(currentChar==' '||currentChar=='\n'||currentChar=='\t'||currentChar=='\r'){
+                currentChar = reader.readChar();
+            }
 
             //开始进行分析，一次循环输出一个token
             //字母开头
@@ -239,7 +270,7 @@ public class Tokenizer {
                 case '}':
                     tokens.add(new Token(Type.RIGHT_BRACKET,currentToken));break;
                 default:
-                    throw new TokenizerException(currentToken+"是非法字符！\n");
+                    throw new TokenizerException((int)currentChar+"是非法字符！\n");
             }
         }
         return tokens;

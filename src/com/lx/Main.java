@@ -38,6 +38,7 @@ public class Main {
             case 2:
                 input=args[1];
                 if(args[0].equals("-s")||args[0].equals("-c")){
+
                     ArrayList<Token> result = Tokenizer.tokenizer(new SourceFileReader(input));
                     TokenReader reader = new TokenReader(result);
                     Analyser analyser =new Analyser(reader);

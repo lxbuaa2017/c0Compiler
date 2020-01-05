@@ -1,17 +1,19 @@
 package com.lx.util;
 
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.PushbackReader;
+import java.io.*;
+import java.nio.charset.Charset;
 
 public class SourceFileReader {
     private  String filePath;
     private  PushbackReader pushbackReader;
 
-    public  SourceFileReader(String path) throws FileNotFoundException {
+    public  SourceFileReader(String path) throws IOException {
         filePath=path;
-        pushbackReader=new PushbackReader(new FileReader(filePath));
+        InputStreamReader isr = new InputStreamReader(new FileInputStream(new File(filePath)), "gbk"); //或GB2312,GB18030
+        BufferedReader read = new BufferedReader(isr);
+        pushbackReader=new PushbackReader(read);
+//        pushbackReader=new PushbackReader(new FileReader(filePath, Charset.forName("utf-8")));
+
     }
 
     public  char readChar() throws IOException {
