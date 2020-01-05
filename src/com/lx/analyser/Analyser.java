@@ -17,6 +17,8 @@ import static com.lx.tokenizer.Type.*;
 public class Analyser {
     private TokenReader reader;
 
+    private String currentFunctionType;
+
     private int currentParamNum;
 
     private HashMap<String,Integer> currentFuncVarIndexs;
@@ -179,118 +181,117 @@ public class Analyser {
             reader.pushBackTokens();
             throw new NotFitException("void不能声明变量");
         }
-        currentToken=reader.readToken();
-        if(currentToken.getType()!=IDENTIFIER){
-            reader.pushBackTokens();
-            throw new NotFitException("<variable-declaration>中识别不到合法的<init-declarator>");
-        }
-        String idenName = (String) currentToken.getValue();//变量名
-        //在这里判断重命名问题
-        if(isStart){
-            if(globalConstantsIndex.containsKey(idenName)||globalVarIndex.containsKey(idenName))
-                throw new RuntimeException(idenName+" :全局变量命名重复。");
-        }
-        else {
-            if(currentFuncVarIndexs.containsKey(idenName)||currentFuncConstantsIndex.containsKey(idenName))
-                throw new RuntimeException(idenName+" :局部变量命名重复。");
-        }
-        currentToken=reader.readToken();
-        if(currentToken.getType()!=ASSIGNMENT_OPERATOR){
-            Token simi = currentToken;
-            if(simi.getType()!=SEMICOLON&&simi.getType()!=COMMA){
+        do {
+            currentToken = reader.readToken();//这里
+            if (currentToken.getType() != IDENTIFIER) {
                 reader.pushBackTokens();
-                throw new NotFitException("");
+                throw new NotFitException("<variable-declaration>中识别不到合法的<init-declarator>");
             }
-            reader.unreadToken(simi);
-            //此时比如定义了个int a, 是start的话，如果是const，就存.constants，start里用loadc,不是const就bipush
-            if(isStart){
-                if(currentConstFlag){
-                    throw new RuntimeException("const变量必须显式初始化");
+            String idenName = (String) currentToken.getValue();//变量名
+            //在这里判断重命名问题
+            if (isStart) {
+                if (globalConstantsIndex.containsKey(idenName) || globalVarIndex.containsKey(idenName))
+                    throw new RuntimeException(idenName + " :全局变量命名重复。");
+            } else {
+                if (currentFuncVarIndexs.containsKey(idenName) || currentFuncConstantsIndex.containsKey(idenName))
+                    throw new RuntimeException(idenName + " :局部变量命名重复。");
+            }
+            currentToken = reader.readToken();
+            if (currentToken.getType() != ASSIGNMENT_OPERATOR) {
+                Token simi = currentToken;
+                if (simi.getType() != SEMICOLON && simi.getType() != COMMA) {
+                    reader.pushBackTokens();
+                    throw new NotFitException("");
                 }
-                else {
-                    //直接存到.start
-                    int index = starts.size();
-                    starts.add(new Operation(index,"ipush","0",null));
-                    globalVarIndex.put(idenName,stackIndex);
-                    stackIndex++;
+                reader.unreadToken(simi);
+                //此时比如定义了个int a, 是start的话，如果是const，就存.constants，start里用loadc,不是const就bipush
+                if (isStart) {
+                    if (currentConstFlag) {
+                        throw new RuntimeException("const变量必须显式初始化");
+                    } else {
+                        //直接存到.start
+                        int index = starts.size();
+                        starts.add(new Operation(index, "ipush", "0", null));
+                        globalVarIndex.put(idenName, stackIndex);
+                        stackIndex++;
+                    }
+                } else {
+                    //在函数里
+                    if (currentConstFlag) {
+                        throw new RuntimeException("const变量必须显式初始化");
+                    } else {
+                        int index = currentOperations.size();
+                        currentOperations.add(new Operation(index, "ipush", 0, null));
+                        currentFuncVarIndexs.put(idenName, currentFuncStackIndex);
+                        currentFuncStackIndex++;
+                        //默认为0
+                    }
                 }
-            }
-            else {
-                //在函数里
-                if(currentConstFlag){
-                    throw new RuntimeException("const变量必须显式初始化");
+            } else {//有赋值语句
+                try {
+                    if (!(currentConstFlag && isStart))
+                        expression();//计算完后index-1处存结果
+                } catch (NotFitException e) {
+                    throw new NotFitException("<variable-declaration>中识别不到合法的<expression>");
                 }
-                else {
-                    int index = currentOperations.size();
-                    currentOperations.add(new Operation(index,"ipush",0,null));
-                    currentFuncVarIndexs.put(idenName,currentFuncStackIndex);
-                    currentFuncStackIndex++;
-                    //默认为0
-                }
-            }
-        }
-        else {//有赋值语句
-            try{
-                if(!(currentConstFlag&&isStart))
-                    expression();//计算完后index-1处存结果
-            }
-            catch (NotFitException e){
-                throw new NotFitException("<variable-declaration>中识别不到合法的<expression>");
-            }
-            if(currentConstFlag){
-                if(isStart){
-                    //这里的constant计算由编译器完成
-                    String exprStr = "";
-                    currentToken=reader.readToken();
-                    while (currentToken.getType()!=SEMICOLON&&currentToken.getType()!=COMMA){
-                        exprStr+=currentToken.getValue();
+                if (currentConstFlag) {
+                    if (isStart) {
+                        //这里的constant计算由编译器完成
+                        String exprStr = "";
                         currentToken = reader.readToken();
+                        while (currentToken.getType() != SEMICOLON && currentToken.getType() != COMMA) {
+                            String num = currentToken.getValue().toString();
+                            if (currentToken.getType() == HEXADECIMAL_LITERAL) {
+                                num = num.substring(2);
+                                int decimal = (int) Long.parseLong(num, 16);//十六进制转十进制
+                                num = Integer.toString(decimal);
+                                currentToken.value = num;
+                            }
+                            exprStr += currentToken.getValue();
+                            currentToken = reader.readToken();
+                        }
+                        reader.unreadToken(currentToken);
+                        String result;
+                        try {
+                            result = expr.calculate(exprStr).toString();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            throw new NotFitException("表达式不正确");
+                        }
+                        int index = constants.size();
+                        constants.add(new Constant(index, 'I', result));
+                        globalConstantsIndex.put(idenName, index);
+                    } else {
+                        //函数里的const，已经由expression计算完成放到栈顶
+                        currentFuncConstantsIndex.put(idenName, currentFuncStackIndex - 1);
                     }
-                    reader.unreadToken(currentToken);
-                    String result;
-                    try {
-                        result = expr.calculate(exprStr).toString();
+                } else {//已经赋值的，不是constantd的
+                    if (isStart) {
+                        //int a = 3+3;
+                        globalVarIndex.put(idenName, stackIndex - 1);
+                    } else {
+                        currentFuncVarIndexs.put(idenName, currentFuncStackIndex - 1);
                     }
-                    catch (Exception e){
-                        e.printStackTrace();
-                        throw new NotFitException("表达式不正确");
-                    }
-                    int index = constants.size();
-                    constants.add(new Constant(index,'I',result));
-                    globalConstantsIndex.put(idenName,index);
-                }
-                else {
-                    //函数里的const，已经由expression计算完成放到栈顶
-                    currentFuncConstantsIndex.put(idenName,currentFuncStackIndex-1);
                 }
             }
-            else {//已经赋值的，不是constantd的
-                if(isStart){
-                    //int a = 3+3;
-                    globalVarIndex.put(idenName,stackIndex-1);
-                }
-                else {
-                    currentFuncVarIndexs.put(idenName,currentFuncStackIndex-1);
-                }
-            }
-        }
-        currentToken = reader.readToken();
-        Token temp = currentToken;
-        while(currentToken.getType()==COMMA){
-            try{
-                init_declarator();
-                currentToken = reader.readToken();
-                if(currentToken.getType()!=COMMA){
-                    reader.unreadToken(currentToken);
-                    break;
-                }
-//                temp = currentToken;
-            }
-            catch (NotFitException e){
-//                reader.unreadToken(temp);
-                throw new RuntimeException();
-            }
-        }
+            currentToken = reader.readToken();  //这里
+        }while (currentToken.getType()==COMMA);
+//        Token temp = currentToken;
+//        while(currentToken.getType()==COMMA){
+//            try{
+//                init_declarator();
+//                currentToken = reader.readToken();
+//                if(currentToken.getType()!=COMMA){
+//                    reader.unreadToken(currentToken);
+//                    break;
+//                }
+////                temp = currentToken;
+//            }
+//            catch (NotFitException e){
+////                reader.unreadToken(temp);
+//                throw new RuntimeException();
+//            }
+//        }
         if(currentToken.getType()!=SEMICOLON)
             throw new RuntimeException("变量定义缺少分号");
 //        <init-declarator-list> ::=
@@ -301,6 +302,7 @@ public class Analyser {
 //        '='<expression>
         //a=3,b=4,c=a+b
     }
+
     public void init_declarator() throws NotFitException{
         Token currentToken=reader.readToken();
         if(currentToken.getType()!=IDENTIFIER){
@@ -383,27 +385,7 @@ public class Analyser {
                 }
             }
         }
-        /*Token currentToken=reader.readToken();
-        Token temp1 = currentToken;
-        if(currentToken.getType()!=IDENTIFIER){
-            reader.unreadToken(currentToken);
-            throw new NotFitException("<init_declarator>中识别不到合法的<identifier>");
-        }
-        currentToken=reader.readToken();
-        if(currentToken.getType()!=ASSIGNMENT_OPERATOR){
-            reader.unreadToken(currentToken);
-        }
-        else {
-            Token temp = currentToken;
-            try{
-                expression();
-            }
-            catch (NotFitException e){
-                reader.unreadToken(temp);
-                reader.unreadToken(temp1);
-                throw new NotFitException("<initializer>中识别不到合法的<expression>");
-            }
-        }*/
+
     }
 //    <function-definition> ::= <type-specifier><identifier><parameter-clause><compound-statement>
 //    int func(int a){}
@@ -423,6 +405,7 @@ public class Analyser {
             reader.unreadToken(currentToken);
             throw new NotFitException("functionDefinition中没有type-specifier"+"  "+currentToken.toString());
         }
+
         Token temp = currentToken;//void int
         currentToken=reader.readToken();
         if(currentToken.getType()!=IDENTIFIER) {
@@ -430,6 +413,7 @@ public class Analyser {
             reader.unreadToken(temp);
             throw new NotFitException("functionDefinition中没有identifier");
         }
+        currentFunctionType = currentToken.getValue().toString();
         String funcName = new String(currentToken.getValue().toString());//防止浅拷贝
         //把函数名存到constants里
         int nameIndex = constants.size();
@@ -900,11 +884,20 @@ public class Analyser {
             reader.unreadToken(currentToken);
             throw new NotFitException("return");
         }
+        Token t = reader.readToken();
+        if(currentToken.getType()==SEMICOLON&&currentFunctionType.equals("int")){
+            System.out.println("int需要有返回值!");
+            throw new RuntimeException("int需要有返回值!");
+        }
+        reader.unreadToken(t);
         try{
             expression();
         }
-        catch (NotFitException ignored){
-
+        catch (NotFitException e){
+            if(currentFunctionType.equals("int")){
+                System.out.println("int需要有返回值!");
+                throw new RuntimeException("int需要有返回值!");
+            }
         }
         currentToken = reader.readToken();
         if (currentToken.getType()!=SEMICOLON){
@@ -1004,16 +997,15 @@ public class Analyser {
         int index = currentOperations.size();
         currentOperations.add(new Operation(index,"iprint",null,null));
         currentFuncStackIndex--;
-        currentOperations.add(new Operation(index+1,"ipush",32,null));//压入空格ascil码
-        currentOperations.add(new Operation(index+2,"cprint",null,null));
         while (currentToken.getType()==COMMA){
+            index = currentOperations.size();
+            currentOperations.add(new Operation(index,"ipush",32,null));//压入空格ascil码
+            currentOperations.add(new Operation(index+1,"cprint",null,null));
             try {
                 expression();
                 index = currentOperations.size();
                 currentOperations.add(new Operation(index,"iprint",null,null));
                 currentFuncStackIndex--;
-                currentOperations.add(new Operation(index+1,"ipush",32,null));//压入空格ascil码
-                currentOperations.add(new Operation(index+2,"cprint",null,null));
             }
             catch (NotFitException e){
                 throw  new RuntimeException();

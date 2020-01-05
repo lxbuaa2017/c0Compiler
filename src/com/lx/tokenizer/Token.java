@@ -1,8 +1,8 @@
 package com.lx.tokenizer;
 
 public class Token {
-    private Type type;
-    private Object value;
+    public Type type;
+    public Object value;
 
     public Token(Type type, Object value) {
         this.type = type;

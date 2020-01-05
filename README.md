@@ -1,6 +1,6 @@
 # c0Compiler
 用法：
-cd c0Compiler/target
+./build.sh
 运行里面的cc0即可。
 Usage:
   ./cc0 [options] input [-o file]

@@ -3,7 +3,7 @@
   <component name="Encoding">
     <file url="file://$PROJECT_DIR$/out/artifacts/c0Compiler_jar/temp" charset="GB2312" />
     <file url="file://$PROJECT_DIR$/src/com/lx/a.c0" charset="GBK" />
-    <file url="file://$PROJECT_DIR$/src/com/lx/test.c0" charset="GB2312" />
+    <file url="file://$PROJECT_DIR$/src/com/lx/test.c0" charset="UTF-8" />
     <file url="PROJECT" charset="UTF-8" />
   </component>
 </project>

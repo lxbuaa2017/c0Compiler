@@ -1,12 +1,9 @@
-void a(){}
-void main(){
-int u;
-scan(u);
-if(1)
-    if(1){
-        print(u);
-        }
-    else;
-else;
-print(1234);
+/*const int a = 0x88ef;*/
+const int a=0x0000feab;
+void fun(){}
+int main(){
+    int a=9,b=1,c=a+b,d;
+    print(c);
+    return a//
+    /b*c;
 }
